@@ -1,0 +1,6 @@
+﻿services:
+  dndtraderserver:
+    image: dndtraderserver
+    build:
+      context: .
+      dockerfile: DndTraderServer/Dockerfile

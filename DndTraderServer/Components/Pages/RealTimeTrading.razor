@@ -1,0 +1,409 @@
+﻿@page "/admin"
+@using Domain.Entities.Connections
+@inject BaseService<Player> PlayersService
+@inject BaseService<Category> CategoryService
+@inject BaseService<TraderItem> TraderItemService
+@inject BaseService<Trader> TraderService
+@inject CurrentStateService CurrentState
+@inject BaseService<Discount> DiscountService
+
+<NotificationWindow @ref="_notification"/>
+<DiscountSelectPopup ItemSelectedAction="DiscountSelectedAction"/>
+<ItemBuyPopup @ref="_itemBuyPopup" ItemBoughtAction="ItemBoughtAction" DisplayedPlayers="_playersToDisplay" />
+<div class="back-change dark-style">
+    <div class="container p-3" style="display: flex; flex-direction: column">
+        <div class="row row-cols-auto mb-3">
+            <div class="col d-flex align-items-end m-0">
+                <h1 class="page-title">
+                    Торговля в реальном времени
+                </h1>
+            </div>
+        </div>
+        <div class="row mb-3">
+            <DropDown Items="_traders" Title="Отображать торговца" AddEmptyVariant="true"
+                      InitialSelectedItem="_traders.FirstOrDefault(t => t.Id == CurrentState.DisplayedTrader?.Id)" IsAutoWidth="true"
+                      CustomToStringFormat="t => t.Title" SelectionChangedAction="TraderSelectionChanged"/>
+        </div>
+        <div class="row mb-3">
+            <DropDown Items="_playersNotAdded" Title="Добавить персонажа" AddEmptyVariant="true"
+                      IsAutoWidth="true" CustomToStringFormat="PlayerToStr"
+                      SelectionChangedAction="DdPlayerSelectionChanged" @ref="_playerDropDown"/>
+        </div>
+    </div>
+    
+    <div class="row trading-section">
+        <div class="col col-3 trading-col player-col">
+            <div class="trading-col-header">
+                <h5 class="m-0 p-0">Персонажи</h5>
+                <h5 class="m-0 p-0">Монет в сумме: @GetSumOfPlayersBalance()</h5>
+            </div>
+            <div class="trading-col-content">
+                @foreach (var player in _playersToDisplay)
+                {
+                    <div class="col">
+                        <div class="card mb-1">
+                            <div class="row g-0">
+                                @if (player.ImagePath != null)
+                                {
+                                    <div class="col col-2">
+                                        <img src="@WebUtils.GetFullImageUrl(NavigationManager, player.ImagePath)" class="img-fluid rounded" alt="Изображение игрока">
+                                    </div>
+                                }
+                                <div class="col d-flex">
+                                    <div class="card-body d-flex flex-column p-2 flex-grow-1">
+                                        <h5 class="card-title mb-1">@player.Title</h5>
+                                        <div class="row flex-grow-1">
+                                            <div class="col d-flex align-items-start">
+                                                <p class="card-text mb-0"><b>Кошель: </b>@player.Balance</p>
+                                            </div>
+                                            <div class="col col-auto d-flex align-items-end">
+                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => RemovePlayerFromListButtonClicked(player)">
+                                                    Отключить
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+        <div class="col col-6 d-flex trading-col items-col">
+            <div class="trading-col-header">
+                <h5 class="m-0 p-0">Предметы</h5>
+            </div>
+
+            @if (CurrentState.DisplayedTrader == null)
+            {
+                <div class="trading-col-content d-flex align-items-center justify-content-center">
+                    Выберите торговца для отображения его товаров.
+                </div>
+            }
+            else if (_traderItems.Count == 0)
+            {
+                <div class="trading-col-content d-flex align-items-center justify-content-center">
+                    У торговца "@(CurrentState.DisplayedTrader.Title)" не добавлены товары.
+                </div>
+            }
+            else
+            {
+                <div class="row row-cols-1 g-3">
+                    @foreach (var item in _traderItems)
+                    {
+                        @if (item.Item != null)
+                        {
+                            <div class="col">
+                            <div class="card @GetItemCardOutOfStockStatus(item)">
+                                <div class="row g-0">
+                                    @if (item.Item.ImagePath != null)
+                                    {
+                                        <div class="col-md-1 d-flex align-items-center justify-content-center" style="padding-left: 8px; padding-bottom: 8px; padding-top: 8px">
+                                            <img src="@WebUtils.GetFullImageUrl(NavigationManager, item.Item.ImagePath)"
+                                                 class="img-fluid rounded" alt="Изображение предмета">
+                                        </div>
+                                    }
+                                    <div class="col">
+                                        <div class="card-body" style="padding: 8px">
+                                            <h5 class="card-title">
+                                                @item.Item.Title,
+                                                <span style="background: @item.Item.Rarity.GetCssColor(); padding: 2px 5px; border-radius: 5px">@item.Item.Rarity.ToRus()</span>, 
+                                                @item.Item.Type.ToRus()
+                                            </h5>
+                                            
+                                            @if (item.AppliedDiscount != null)
+                                            {
+                                                <h5 class="card-text mb-0"><b>Цена: </b><s>@(GetItemPriceBeforeDiscount(item))</s> <b>@CalculateItemTotalPrice(item) монет(а)</b></h5>
+                                            }
+                                            else
+                                            {
+                                                <h5 class="card-text mb-0"><b>Цена: @CalculateItemTotalPrice(item) монет(а)</b></h5>
+                                            }
+                                            <p class="card-text mb-0"><b>Осталось: </b>@item.Count шт.</p>
+
+                                            @if (item.AppliedDiscount != null)
+                                            {
+                                                @if (item.AppliedDiscount.IsPercent)
+                                                {
+                                                    <p class="card-text mb-0"><b>Скидка: </b>@(item.AppliedDiscount.DiscountPercent)%</p>
+                                                }
+                                                else
+                                                {
+                                                    <p class="card-text mb-0"><b>Скидка: </b>@(item.AppliedDiscount.DiscountFix) монет</p>
+                                                }
+                                            }
+                                            <div class="accordion mb-3" id="accordionExample">
+                                                <div class="accordion-item">
+                                                    <h2 class="accordion-header">
+                                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse@(item.Id)" aria-expanded="false" aria-controls="collapse@(item.Id)">
+                                                            Описание
+                                                        </button>
+                                                    </h2>
+                                                    <div id="collapse@(item.Id)" class="accordion-collapse collapse" data-bs-parent="#accordionExample">
+                                                        <div class="accordion-body">
+                                                            @((MarkupString)item.Item.Description.Replace("\n", "<br>"))
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="d-flex">
+                                                @if (CurrentState.IsItemHidden(item.Id))
+                                                {
+                                                    <button class="btn btn-sm btn-primary" @onclick="() => ToggleItemHidden(item)">
+                                                        Отобразить предмет
+                                                    </button>
+                                                }
+                                                else
+                                                {
+                                                    <button class="btn btn-sm btn-primary" @onclick="() => ToggleItemHidden(item)">
+                                                        Скрыть предмет
+                                                    </button>
+                                                }
+                                                @if (CurrentState.IsItemExpanded(item.Id))
+                                                {
+                                                    <button class="btn btn-sm btn-primary" @onclick="() => ToggleItemExpanded(item)">
+                                                        Скрыть описание для игроков
+                                                    </button>
+                                                }
+                                                else
+                                                {
+                                                    <button class="btn btn-sm btn-primary" @onclick="() => ToggleItemExpanded(item)">
+                                                        Показать описание игрокам
+                                                    </button>
+                                                }
+                                            </div>
+                                            
+                                            <div class="d-flex justify-content-between" style="margin-top: 10px">
+                                                <div class="d-flex g-3">
+                                                    @if (item.AppliedDiscount != null)
+                                                    {
+                                                        <button class="btn btn-sm btn-primary" style="margin-right: 10px"
+                                                                data-bs-toggle="modal" data-bs-target="#discount-select-popup"
+                                                                @onclick="() => ApplyDiscountButtonClicked(item)">
+                                                            Изменить скидку
+                                                        </button>
+                                                        <button class="btn btn-sm btn-primary" @onclick="() => RemoveDiscountButtonClicked(item)">
+                                                            Убрать скидку
+                                                        </button>
+                                                    }
+                                                    else
+                                                    {
+                                                        <button class="btn btn-sm btn-primary" @onclick="() => ApplyDiscountButtonClicked(item)"
+                                                                data-bs-toggle="modal" data-bs-target="#discount-select-popup">
+                                                            Применить скидку
+                                                        </button>
+                                                    }
+                                                </div>
+                                                <button class="btn btn-sm btn-success" @onclick="() => RequestBuyItemButtonClicked(item)"
+                                                        data-bs-toggle="modal" data-bs-target="#buy-item-popup">
+                                                    Купить
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        }
+                    }
+                </div>
+            }
+        </div>
+        <div class="col col-3 d-flex trading-col ">
+            <div class="trading-col-header">
+                <h5 class="m-0 p-0">Торговец</h5>
+            </div>
+
+            @if (CurrentState.DisplayedTrader != null)
+            {
+                <div class="trading-col-content d-flex align-items-center justify-content-center">
+                    <div class="card mb-3">
+                        @if (CurrentState.DisplayedTrader.ImagePath != null)
+                        {
+                            <img src="@WebUtils.GetFullImageUrl(NavigationManager, CurrentState.DisplayedTrader.ImagePath)" class="card-img-top" alt="Изображение торговца">
+                        }
+                        <div class="card-body">
+                            <h5 class="card-title">@CurrentState.DisplayedTrader.Title</h5>
+                            <p class="card-text">Предлагает прикупить у него немного товаров.</p>
+                        </div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="trading-col-content d-flex align-items-center justify-content-center">
+                    Выберите торговца для отображения информации о нем.
+                </div>
+            }
+        </div>
+    </div>
+
+</div>
+@code {
+    private NotificationWindow _notification = null!;
+    private ItemBuyPopup _itemBuyPopup = null!;
+    private List<Player> _playersNotAdded = [];
+    private DropDown<Player> _playerDropDown = null!;
+    
+    private List<Player> _players = [];
+    private List<Category> _categories = [];
+    private List<string> _categoriesTitles = [];
+    private List<Trader> _traders = [];
+    private List<Discount> _allDiscounts = [];
+    private List<TraderItem> _traderItems = [];
+
+    private List<Player> _playersToDisplay = [];
+    private TraderItem? _waitingForDiscountItem;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCategoriesAsync();
+        await LoadTraders();
+        await LoadTraderItems();
+        await LoadDiscounts();
+        await LoadPlayersAsync();
+        foreach (var player in _players.Where(player => CurrentState.IsPlayerDisplaying(player)))
+        {
+            _playersToDisplay.Add(player);
+        }
+        _playersNotAdded = _players.ExceptBy(CurrentState.DisplayedPlayersIds, p => p.Id).ToList();
+        CurrentState.PropertiesChangedCallback += ReloadAfterStateChange;
+    }
+    
+    private string GetItemCardOutOfStockStatus(TraderItem item)
+    {
+        return item.Count <= 0 || CurrentState.IsItemHidden(item.Id) ? "out-of-stock" : "";
+    }
+    
+    private async Task ReloadAfterStateChange()
+    {
+        NavigationManager.Refresh(true);
+    }
+    
+    private void TraderSelectionChanged(Trader? obj)
+    {
+        CurrentState.DisplayedTrader = obj;
+        CurrentState.StateChangedAsync();
+        StateHasChanged();
+    }
+
+    private void DdPlayerSelectionChanged(Player? obj)
+    {
+        if (obj == null)
+        {
+            return;
+        }
+        var res = CurrentState.TryAddPlayerToDisplay(obj);
+        CurrentState.StateChangedAsync();
+        
+        if (res)
+        {
+            _notification.Show("Успешно", $"Игрок \"{obj.Title}\" добавлен в отображение");
+        }
+    }
+
+    private string PlayerToStr(Player player)
+    {
+        if (player.Category != null)
+        {
+            return $"{player.Title} ({player.Category.Title})";
+        }
+
+        return $"{player.Title}";
+    }
+    
+    private int CalculateItemTotalPrice(TraderItem item)
+    {
+        var startPrice = GetItemPriceBeforeDiscount(item);
+        if (item.AppliedDiscount == null)
+        {
+            return startPrice;
+        }
+
+        var discount = item.AppliedDiscount;
+        if (discount.IsPercent)
+        {
+            return (int)Math.Floor(startPrice - startPrice * discount.DiscountPercent / 100d);
+        }
+
+        return startPrice - discount.DiscountFix;
+    }
+    
+    private int GetItemPriceBeforeDiscount(TraderItem item)
+    {
+        return item.UseDefaultPrice ? item.Item.DefaultPrice : item.CustomPrice;
+    }
+
+    private void ApplyDiscountButtonClicked(TraderItem item)
+    {
+        _waitingForDiscountItem = item;
+    }
+
+    private async Task RemoveDiscountButtonClicked(TraderItem item)
+    {
+        item.AppliedDiscount = null;
+        item.DiscountId = null;
+        var prevItem = item.Item;
+        item.Item = null;
+        await TraderItemService.SaveAsync(item);
+        item.Item = prevItem;
+        await CurrentState.StateChangedAsync();
+    }
+
+    private async Task DiscountSelectedAction(Discount arg)
+    {
+        if (_waitingForDiscountItem == null)
+        {
+            return;
+        }
+
+        _waitingForDiscountItem.DiscountId = arg.Id;
+        _waitingForDiscountItem.AppliedDiscount = null;
+        var prevItem = _waitingForDiscountItem.Item;
+        _waitingForDiscountItem.Item = null;
+        await TraderItemService.SaveAsync(_waitingForDiscountItem);
+        _waitingForDiscountItem.Item = prevItem;
+        await CurrentState.StateChangedAsync();
+    }
+
+    private int GetSumOfPlayersBalance()
+    {
+        return _playersToDisplay.Sum(p => p.Balance);
+    }
+
+    private async Task RemovePlayerFromListButtonClicked(Player player)
+    {
+        if (CurrentState.DisplayedPlayersIds.Contains(player.Id))
+        {
+            CurrentState.DisplayedPlayersIds.Remove(player.Id);
+            _notification.Show("Успешно", $"Игрок \"{player.Title}\" отключен из торговли.");
+            await CurrentState.StateChangedAsync();
+        }
+    }
+
+    private async Task ToggleItemExpanded(TraderItem item)
+    {
+        CurrentState.ToggleItemExpand(item);
+        await CurrentState.StateChangedAsync();
+    }
+
+    private async Task ItemBoughtAction(TraderItem obj, int count)
+    {
+        _notification.Show("Успешно", $"Вы успешно купили предмет \"{obj.Item.Title}\" в кол-ве {count} шт.");
+        await CurrentState.StateChangedAsync();
+    }
+
+    private void RequestBuyItemButtonClicked(TraderItem item)
+    {
+        _itemBuyPopup.Show(item);
+    }
+
+    private async Task ToggleItemHidden(TraderItem item)
+    {
+        CurrentState.ToggleHideItem(item);
+        _notification.Show("Успешно", $"Предмет \"{item.Item?.Title}\" скрыт от игроков.");
+        await CurrentState.StateChangedAsync();
+    }
+
+}

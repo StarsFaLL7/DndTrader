@@ -1,0 +1,178 @@
+﻿@inject BaseService<Item> ItemService
+@if (true)
+{
+    <div class="modal fade" id="item-select-popup" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog" style="max-width: 1000px">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h1 class="modal-title fs-5" id="staticBackdropLabel">Выберите предмет</h1>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="container">
+                        <div class="row row-cols-auto mb-1">
+                            <h5>Фильтры</h5>
+                        </div>
+                        <div class="row row-cols-auto mb-3">
+                            <div class="col">
+                                <label for="search-input" class="form-label">Поиск</label>
+                                <input type="text" class="form-control" id="search-input" placeholder="Поиск..." @onchange="SearchInputChange">
+                            </div>
+                            <div class="col">
+                                <DropDown Items="_rarities" AddEmptyVariant="true" Title="Редкость" SelectionChangedAction="RarityFilterChanged"
+                                          CustomToStringFormat="r => r.Value.ToRus()" InitialSelectedItem="_filterRarity"/>
+                            </div>
+                            <div class="col">
+                                <DropDown Items="_types" AddEmptyVariant="true" Title="Тип" SelectionChangedAction="ItemTypeFilterChanged"
+                                          CustomToStringFormat="t => t.Value.ToRus()" InitialSelectedItem="_filterType"/>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row row-cols-1 g-3">
+                    @foreach (var item in _items)
+                    {
+                        <div class="col">
+                            <div class="card">
+                                <div class="row g-0">
+                                    @if (item.ImagePath != null)
+                                    {
+                                        <div class="col-md-2 d-flex align-items-center" style="padding-left: 16px; padding-bottom: 16px; padding-top: 16px">
+                                            <img src="@WebUtils.GetFullImageUrl(NavigationManager, item.ImagePath)" class="img-fluid rounded" alt="Изображение предмета">
+                                        </div>
+                                    }
+                                    <div class="col">
+                                        <div class="card-body">
+                                            <h5 class="card-title">@item.Title</h5>
+                                            <p class="card-text"><b>Стандартная цена: </b>@item.DefaultPrice</p>
+                                            <h6 class="card-subtitle mb-3 fw-bold">
+                                                Редкость: <span style="background: @item.Rarity.GetCssColor(); padding: 2px 5px; border-radius: 5px">@item.Rarity.ToRus()</span>, Тип: @item.Type.ToRus()
+                                            </h6>
+                                            <div class="accordion mb-3" id="accordionExample">
+                                                <div class="accordion-item">
+                                                    <h2 class="accordion-header">
+                                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse@(item.Id)" aria-expanded="false" aria-controls="collapse@(item.Id)">
+                                                            Описание
+                                                        </button>
+                                                    </h2>
+                                                    <div id="collapse@(item.Id)" class="accordion-collapse collapse" data-bs-parent="#accordionExample">
+                                                        <div class="accordion-body">
+                                                            @((MarkupString)item.Description.Replace("\n", "<br>"))
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="accordion-item">
+                                                    <h2 class="accordion-header">
+                                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo@(item.Id)" aria-expanded="false" aria-controls="collapseTwo@(item.Id)">
+                                                            Заметки
+                                                        </button>
+                                                    </h2>
+                                                    <div id="collapseTwo@(item.Id)" class="accordion-collapse collapse" data-bs-parent="#accordionExample">
+                                                        <div class="accordion-body">
+                                                            @((MarkupString)item.HiddenDescription.Replace("\n", "<br>"))
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <button class="btn btn-sm btn-primary" style="width: fit-content" @onclick="() => SelectItemButtonClicked(item)" 
+                                                    data-bs-dismiss="modal">
+                                                Выбрать
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="Close" data-bs-dismiss="modal">Закрыть</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+
+@code {
+    [Parameter]
+    public Func<Item, Task>? ItemSelectedAction { get; set; }
+    
+    public bool IsVisible { get; private set; }
+    
+    private List<ItemType?> _types = [];
+    private List<ItemRarity?> _rarities = [];
+    private ItemRarity? _filterRarity;
+    private ItemType? _filterType;
+    private string _searchInput = "";
+    private List<Item> _items = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _types = Enum.GetValues(typeof(ItemType)).Cast<ItemType?>().ToList();
+        _rarities = Enum.GetValues(typeof(ItemRarity)).Cast<ItemRarity?>().ToList();
+        await LoadItems();
+    }
+
+    public void Show()
+    {
+        IsVisible = true;
+        _filterRarity = null;
+        _filterType = null;
+        _searchInput = "";
+        StateHasChanged();
+    }
+    
+    private async Task LoadItems()
+    {
+        var dataQuery = new DataQueryParams<Item> { Filters = []};
+        if (!string.IsNullOrWhiteSpace(_searchInput))
+        {
+            dataQuery.Expression = item => item.Title.Contains(_searchInput);
+        }
+        if (_filterRarity != null)
+        {
+            dataQuery.Filters.Add(item => item.Rarity == _filterRarity);
+        }
+        if (_filterType != null)
+        {
+            dataQuery.Filters.Add(item => item.Type == _filterType);
+        }
+        var res = await ItemService.GetAsync(dataQuery);
+        _items = res.ToList();
+        StateHasChanged();
+    }
+    
+    private async Task SearchInputChange(ChangeEventArgs obj)
+    {
+        _searchInput = obj.Value == null ? "" : (string)obj.Value;
+        await LoadItems();
+    }
+
+    private void RarityFilterChanged(ItemRarity? obj)
+    {
+        _filterRarity = obj;
+        LoadItems();
+    }
+
+    private void ItemTypeFilterChanged(ItemType? obj)
+    {
+        _filterType = obj;
+        LoadItems();
+    }
+
+    public void Close()
+    {
+        IsVisible = false;
+        StateHasChanged();
+    }
+
+    private async Task SelectItemButtonClicked(Item item)
+    {
+        if (ItemSelectedAction != null)
+        {
+            await ItemSelectedAction(item);
+        }
+        Close();
+    }
+}

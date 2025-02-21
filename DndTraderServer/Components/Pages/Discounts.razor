@@ -1,0 +1,103 @@
+﻿@page "/admin/discounts"
+@inject BaseService<Discount> DiscountService
+
+<NotificationWindow @ref="_notification" />
+<div class="container p-3">
+    <div class="row row-cols-auto mb-3">
+        <div class="col d-flex align-items-end m-0">
+            <h1 class="page-title">
+                Скидки
+            </h1>
+        </div>
+        <div class="col d-flex align-items-end m-0">
+            <button class="btn btn-sm btn-primary" @onclick="CreateNewButtonClicked">
+                Добавить новую
+            </button>
+        </div>
+    </div>
+
+    <div class="row row-cols-3 g-4">
+        @foreach (var discount in _discounts)
+        {
+        <div class="col">
+            <div class="card">
+                <div class="card-header">
+                    @discount.Title
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="name-input" class="form-label">Название скидки</label>
+                        <input type="text" class="form-control" id="name-input" placeholder="Скидка за кубик d20" @bind="discount.Title">
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="" id="isFixedDiscount" @bind="discount.IsPercent">
+                        <label class="form-check-label" for="isFixedDiscount">
+                            Процентная скидка
+                        </label>
+                    </div>
+                    <div class="mb-3">
+                        @if (discount.IsPercent)
+                        {
+                            <label for="percent-discount" class="form-label">Размер скидки (%)</label>
+                            <input type="number" class="form-control" id="percent-discount" placeholder="10" @bind="discount.DiscountPercent">
+                        }
+                        else
+                        {
+                            <label for="fixed-discount" class="form-label">Размер скидки (сумма)</label>
+                            <input type="number" class="form-control" id="fixed-discount" placeholder="120" @bind="discount.DiscountFix">
+                        }
+                    </div>
+                    <button class="btn btn-success" @onclick="() => SaveButtonClicked(discount)">Сохранить</button>
+                    <button class="btn btn-outline-danger" @onclick="() => DeleteButtonClicked(discount)">Удалить</button>
+                </div>
+            </div>
+        </div>
+        }
+    </div>
+</div>
+
+@code {
+
+    private List<Discount> _discounts = [];
+    private NotificationWindow _notification = null!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadDiscounts();
+    }
+
+    private async Task ReloadDiscounts()
+    {
+        var res = await DiscountService.GetAsync(new DataQueryParams<Discount>());
+        _discounts = res.ToList();
+    }
+    
+    private async Task CreateNewButtonClicked()
+    {
+        var discount = new Discount
+        {
+            Id = Guid.NewGuid(),
+            Title = "10%",
+            IsPercent = true,
+            DiscountPercent = 10,
+            DiscountFix = 0
+        };
+        await DiscountService.SaveAsync(discount);
+        _discounts.Add(discount);
+        _notification.Show("Успешно", "Новая скидка была добавлена.");
+    }
+
+    private async Task SaveButtonClicked(Discount discount)
+    {
+        await DiscountService.SaveAsync(discount);
+        _notification.Show("Успешно", "Информация о скидке была сохранена.");
+    }
+
+    private async Task DeleteButtonClicked(Discount discount)
+    {
+        await DiscountService.TryRemoveAsync(discount.Id);
+        _discounts.Remove(discount);
+        _notification.Show("Успешно", "Скидка была удалена.");
+    }
+
+}

@@ -1,0 +1,309 @@
+﻿@page "/admin/players"
+@inject BaseService<Player> PlayersService
+@inject BaseService<Category> CategoryService
+
+<PageTitle>Игроки</PageTitle>
+<NotificationWindow @ref="_notification"/>
+<div class="container p-3">
+    <div class="row row-cols-auto mb-3">
+        <div class="col d-flex align-items-end m-0">
+            <h1 class="page-title">
+                Настройка игроков
+            </h1>
+        </div>
+        <div class="col d-flex align-items-end m-0">
+            <button class="btn btn-sm btn-primary" @onclick="CreateNewPlayerButtonClicked">
+                Добавить нового
+            </button>
+        </div>
+    </div>
+    
+    <div class="row mb-3">
+        <div class="col col-auto  d-flex align-items-end">
+            <DropDown Items="_categories" Title="Фильтр по категории" AddEmptyVariant="true" IsAutoWidth="true"
+                      SelectionChangedAction="CategorySelectionChanged" CustomToStringFormat="c => c.Title" @ref="_dropDownCategoriesFilter"/>
+        </div>
+        <div class="col col-auto d-flex align-items-end">
+            <button class="btn btn-primary" @onclick="ApplyFiltersButtonClicked">Применить</button>
+        </div>
+    </div>
+    
+    <div class="row row-cols-2 g-4">
+            @foreach (var player in _players)
+            {
+                <div class="col">
+                    <div class="card p-3">
+                        <div class="row g-0">
+                            @if (player.ImagePath != null)
+                            {
+                                <div class="col-md-4 d-flex align-items-center p-3">
+                                    <img src="@WebUtils.GetFullImageUrl(NavigationManager, player.ImagePath)" class="img-fluid rounded-start rounded" 
+                                         alt="Изображение игрока">
+                                </div>
+                            }
+                            <div class="col-md-8">
+                                <div class="card-body">
+                                    @if (IsEditing(player))
+                                    {
+                                        <div class="mb-3">
+                                            <label for="name-input" class="form-label">Имя персонажа</label>
+                                            <input type="text" class="form-control" id="name-input" placeholder="Сфинктерион" @bind="player.Title">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="balance-input" class="form-label">Баланс</label>
+                                            <input type="number" class="form-control" id="balance-input" placeholder="100" @bind="player.Balance">
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <h5 class="card-title">@player.Title</h5>
+                                        <p class="card-text mb-1">
+                                            <b>Баланс: </b>@player.Balance
+                                        </p>
+                                        <div class="row m-0 mb-3">
+                                            <div class="col col-auto">
+                                                <div class="row mb-1">
+                                                    <button class="btn btn-outline-success btn-symbol" @onclick="() => ChangePlayerBalance(player, true)">+</button>
+                                                </div>
+                                                <div class="row">
+                                                    <button class="btn btn-outline-danger btn-symbol" @onclick="() => ChangePlayerBalance(player, false)">-</button>
+                                                </div>
+                                            </div>
+                                            <div class="col col-6 d-flex align-items-center">
+                                                <input type="number" min="0" placeholder="Изменить баланс" class="form-control" @bind="_changeBalanceInputValues[player.Id]"/>
+                                            </div>
+                                        </div>
+                                        @if (player.Category != null)
+                                        {
+                                            <p class="card-text mb-3">
+                                                <b>Категория: </b>@player.Category.Title
+                                            </p>
+                                        }
+                                    }
+                                    @if (IsEditing(player))
+                                    {
+                                        <div class="mb-3">
+                                            <label for="notes-input" class="form-label">Пометки</label>
+                                            <textarea class="form-control" id="notes-input" rows="3" @bind="player.Notes"></textarea>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="formFile" class="form-label">Изменить изображение</label>
+                                            <InputFile class="form-control" id="formFile" 
+                                                       OnChange="(obj) => ImageUploaderChanged(player, obj)"/>
+                                        </div>
+                                        <div class="mb-3">
+                                            <DropDown Items="_categoriesTitles" Title="Категория" AddEmptyVariant="true" IsAutoWidth="true"
+                                                      SelectionChangedAction="(c) => PlayerCategoryChanged(player, c)" InitialSelectedItem="player.Category?.Title"/>
+                                        </div>
+                                        <button class="btn btn-outline-secondary" @onclick="CancelEditButtonClicked">Отмена</button>
+                                        <button class="btn btn-success" @onclick="() => SavePlayerButtonClicked(player)">Сохранить</button>
+                                        <button class="btn btn-danger" @onclick="() => DeletePlayerButtonClicked(player)">Удалить</button>
+                                    }
+                                    else
+                                    {
+                                        <p class="card-text mb-3">
+                                            <b>Пометки: </b><br>@player.Notes
+                                        </p>
+                                        <button class="btn btn-primary" @onclick="() => EditButtonClicked(player)">Редактировать</button>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+    </div>
+    
+</div>
+
+
+@code {
+    private List<Player> _players = [];
+    private List<Category> _categories = [];
+    private List<string> _categoriesTitles = [];
+    private Category? _selectedCategory = null;
+    private Dictionary<Guid, int> _changeBalanceInputValues = [];
+    private Player? _editingPlayer;
+    private Player _oldPlayerInfo;
+    
+    private NotificationWindow _notification;
+    private DropDown<Category> _dropDownCategoriesFilter;
+    private string? _editingSelectedCategory;
+        
+    private bool IsEditing(Player player)
+    {
+        if (_editingPlayer == null)
+        {
+            return false;
+        }
+
+        return player.Id == _editingPlayer.Id;
+    }
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPlayersAsync();
+        await LoadCategoriesAsync();
+    }
+
+    private async Task LoadPlayersAsync()
+    {
+        var queryParams = new DataQueryParams<Player>
+        {
+            IncludeParams = new IncludeParams<Player>
+            {
+                IncludeProperties = [p => p.Category]
+            }
+        };
+        if (_selectedCategory != null)
+        {
+            queryParams.Expression = p => p.CategoryId == _selectedCategory.Id;
+        }
+        var result = await PlayersService.GetAsync(queryParams);
+        _changeBalanceInputValues = result.ToDictionary(p => p.Id, p => 0);
+        _players =  result.ToList();
+    }
+
+    private async Task LoadCategoriesAsync()
+    {
+        var res = await CategoryService.GetAsync(new DataQueryParams<Category>());
+        _categories = res.ToList();
+        _categoriesTitles = res.Select(c => c.Title).ToList();
+    }
+
+    private void CategorySelectionChanged(Category? obj)
+    {
+        _selectedCategory = obj;
+    }
+
+    private async Task ApplyFiltersButtonClicked()
+    {
+        await LoadPlayersAsync();
+    }
+
+    private async Task ChangePlayerBalance(Player player, bool add)
+    {
+        var value = _changeBalanceInputValues[player.Id];
+        player.Balance += add ? value : -value;
+        await SavePlayerAsync(player);
+    }
+
+    private async Task DeletePlayerButtonClicked(Player player)
+    {
+        var res = await PlayersService.TryRemoveAsync(player.Id);
+        if (res)
+        {
+            _players.Remove(player);
+            _notification.Show("Успешно", $"Персонаж {player.Title} удален.");
+        }
+    }
+
+    private async Task EditButtonClicked(Player player)
+    {
+        if (_editingPlayer != null)
+        {
+            CancelEditButtonClicked();
+        }
+        _editingPlayer = player;
+        _editingSelectedCategory = null;
+        _oldPlayerInfo = new Player
+        {
+            Id = player.Id,
+            Title = player.Title,
+            Notes = player.Notes,
+            Balance = player.Balance,
+            ImagePath = player.ImagePath,
+            CategoryId = player.CategoryId,
+            Category = player.Category
+        };
+    }
+
+    private async Task SavePlayerButtonClicked(Player player)
+    {
+        if (_editingSelectedCategory != null && _editingSelectedCategory != _editingPlayer!.Category?.Title)
+        {
+            var category = _categories.First(c => c.Title == _editingSelectedCategory);
+            player.CategoryId = category.Id;
+        }
+
+        if (_editingSelectedCategory == null)
+        {
+            player.CategoryId = null;
+        }
+
+        await SavePlayerAsync(player);
+        _notification.Show("Успешно", "Персонаж сохранен.");
+        _editingPlayer = null;
+        await LoadPlayersAsync();
+    }
+
+    private async Task CreateNewPlayerButtonClicked()
+    {
+        var player = new Player
+        {
+            Id = Guid.NewGuid(),
+            Title = "Новый персонаж",
+            Notes = "",
+            Balance = 0,
+        };
+        await SavePlayerAsync(player);
+        _players.Add(player);
+        _changeBalanceInputValues.Add(player.Id, 0);
+        _notification.Show("Успешно", "Новый персонаж создан.");
+    }
+
+    private async Task ImageUploaderChanged(Player player, InputFileChangeEventArgs obj)
+    {
+        if (obj.File.ContentType.Split('/')[0] != "image")
+        {
+            _notification.Show("Ошибка", "Загруженный файл не является изображением.");
+            return;
+        }
+        var wwwrootPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+        if (!string.IsNullOrWhiteSpace(player.ImagePath))
+        {
+            var currentPath = Path.Combine(wwwrootPath, player.ImagePath);
+            if (File.Exists(currentPath))
+            {
+                File.Delete(currentPath);
+            }
+        }
+        var file = obj.File;
+        var extension = obj.File.ContentType.Split('/')[1];
+        var newImagePath = Path.Combine("images", "players", $"{player.Id}.{extension}");
+        var fullPath = Path.Combine(wwwrootPath, newImagePath);
+
+        await using (FileStream fs = new(fullPath, FileMode.Create))
+        {
+            await file.OpenReadStream(maxAllowedSize: 512000000).CopyToAsync(fs);
+        }
+
+        player.ImagePath = newImagePath;
+        await SavePlayerAsync(player);
+        _notification.Show("Успешно", "Изображение успешно обновлено.");
+        StateHasChanged();
+    }
+
+    private async Task SavePlayerAsync(Player player)
+    {
+        var prevUserCategory = player.Category;
+        player.Category = null;
+        await PlayersService.SaveAsync(player);
+        player.Category = prevUserCategory;
+    }
+    
+    private void CancelEditButtonClicked()
+    {
+        _editingPlayer.CategoryId = _oldPlayerInfo.CategoryId;
+        _editingPlayer.Category = _oldPlayerInfo.Category;
+        _editingPlayer.Balance = _oldPlayerInfo.Balance;
+        _editingPlayer.Notes = _oldPlayerInfo.Notes;
+        _editingPlayer.Title = _oldPlayerInfo.Title;
+        _editingPlayer = null;
+    }
+
+    private void PlayerCategoryChanged(Player player, string? obj)
+    {
+        _editingSelectedCategory = obj;
+    }
+}

@@ -1,0 +1,253 @@
+﻿@using Domain.Entities.Connections
+@inject BaseService<Player> PlayerService
+@inject BaseService<TraderItem> TraderItemService
+
+@if (true)
+{
+    <div class="modal fade" id="buy-item-popup" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog" style="max-width: 1000px">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h1 class="modal-title fs-5" id="staticBackdropLabel">Выберите игрока(ов), кто будет платить</h1>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    @if (_item.Item != null)
+                    {
+                        <h6 class="card-subtitle mb-3 fw-bold">
+                            Покупка предмета:
+                            <span style="background: @_item.Item.Rarity.GetCssColor(); padding: 2px 5px; border-radius: 5px">
+                                @_item.Item.Title
+                            </span>
+                        </h6>
+                    }
+                    
+                    
+                    <div class="mb-3">
+                        <label for="count-input" class="form-label">Кол-во штук</label>
+                        <input type="number" class="form-control" id="count-input"
+                               min="0" max="@_item.Count"
+                               placeholder="100" @bind="_buyCount">
+                    </div>
+                    <p class="m-0 p-0 mb-3">
+                        <b>Общая цена: </b>@CalculateItemTotalPrice(_item)
+                    </p>
+                    <div class="mb-3">
+                        <DropDown Items="DisplayedPlayers" Title="Добавить игрока" AddEmptyVariant="true" IsAutoWidth="true" 
+                                  SelectionChangedAction="DdPlayerSelectionChanged" CustomToStringFormat="p => p.Title"/>
+                    </div>
+
+                    <div class="row row-cols-1">
+                        @foreach (var player in _selectedPlayers)
+                        {
+                            <div class="col">
+                                <div class="card mb-1">
+                                    <div class="row g-0">
+                                        @if (player.ImagePath != null)
+                                        {
+                                            <div class="col col-2">
+                                                <img src="@WebUtils.GetFullImageUrl(NavigationManager, player.ImagePath)" class="img-fluid rounded" alt="Изображение игрока">
+                                            </div>
+                                        }
+                                        <div class="col d-flex">
+                                            <div class="card-body d-flex flex-column p-2 flex-grow-1">
+                                                <h5 class="card-title mb-1">@player.Title</h5>
+                                                <div class="flex-grow-1">
+                                                    <div class="d-flex align-items-start mb-3">
+                                                        <p class="card-text mb-0"><b>Кошель: </b>@player.Balance</p>
+                                                    </div>
+                                                    <div class="d-flex align-items-end">
+                                                        <div class="" style="margin-right: 10px">
+                                                            <label for="price-input@(player.Id)" class="form-label">Оплатит монет</label>
+                                                            <input type="number" class="form-control" id="price-input@(player.Id)"
+                                                                   min="0"
+                                                                   placeholder="100" @bind="_selectedPlayersPay[player.Id]">
+                                                        </div>
+                                                        <button class="btn btn-primary"
+                                                                @onclick="() => PlayerPayMaxButtonClicked(player)">
+                                                            Макс
+                                                        </button>
+                                                    </div>
+
+                                                    <p class="card-text mb-3"><b>Останется монет: </b>@(player.Balance - _selectedPlayersPay[player.Id])</p>
+                                                    
+                                                    <button class="btn btn-sm btn-outline-danger"
+                                                            @onclick="() => RemoveSelectedPlayer(player)">
+                                                        Убрать игрока
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    @if (IsEnoughMoneyToPay())
+                    {
+                        <div class="row">
+                            <p class="text-success">Выделено достаточно монет для оплаты.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="row">
+                            <p class="text-danger">Выделено недостаточно монет для оплаты.</p>
+                            <p class="text-danger">Осталось оплатить: @GetLeftMoneyToPay() монет(а)</p>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-success" @onclick="BuyItem" data-bs-dismiss="modal">Купить</button>
+                    <button type="button" class="btn btn-secondary" @onclick="Close" data-bs-dismiss="modal">Закрыть</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+
+@code {
+    [Parameter]
+    public Func<TraderItem, int, Task>? ItemBoughtAction { get; set; }
+
+    [Parameter] [EditorRequired] public List<Player> DisplayedPlayers { get; set; } = [];
+    
+    private readonly Dictionary<Guid, int> _selectedPlayersPay = [];
+    private readonly List<Player> _selectedPlayers = [];
+    private TraderItem _item = new TraderItem
+    {
+        Id = default,
+        Count = 0,
+        TraderId = default,
+        ItemId = default,
+        UseDefaultPrice = false
+    };
+
+    private int _buyCount = 1;
+    
+    private List<Discount> _allDiscounts = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        
+    }
+
+    public void Show(TraderItem item)
+    {
+        _item = item;
+        _selectedPlayers.Clear();
+        _selectedPlayersPay.Clear();
+        _buyCount = 1;
+        StateHasChanged();
+    }
+
+    public void Close()
+    {
+        StateHasChanged();
+    }
+
+    private async Task SelectButtonClicked(Discount item)
+    {
+        Close();
+    }
+
+    private void DdPlayerSelectionChanged(Player? obj)
+    {
+        if (obj == null)
+        {
+            return;
+        }
+        if (_selectedPlayers.All(p => p.Id != obj.Id))
+        {
+            _selectedPlayers.Add(obj);
+            _selectedPlayersPay[obj.Id] = 0;
+        }
+        StateHasChanged();
+    }
+
+    private void RemoveSelectedPlayer(Player player)
+    {
+        var playerInSelection = _selectedPlayers.FirstOrDefault(p => p.Id == player.Id);
+        if (playerInSelection == null)
+        {
+            return;
+        }
+        _selectedPlayers.Remove(playerInSelection);
+        
+        if (_selectedPlayersPay.ContainsKey(player.Id))
+        {
+            _selectedPlayersPay.Remove(player.Id);
+        }
+    }
+
+    private void PlayerPayMaxButtonClicked(Player player)
+    {
+        var leftTopay = CalculateItemTotalPrice(_item) - _selectedPlayersPay.Sum(kv => kv.Value);
+        if (player.Balance >= leftTopay)
+        {
+            _selectedPlayersPay[player.Id] = leftTopay;
+        }
+        else
+        {
+            _selectedPlayersPay[player.Id] = player.Balance;
+        }
+    }
+
+    private bool IsEnoughMoneyToPay()
+    {
+        var totalPay = _selectedPlayersPay.Sum(kv => kv.Value);
+        return totalPay >= CalculateItemTotalPrice(_item);
+    }
+
+    private int GetLeftMoneyToPay()
+    {
+        var totalPay = _selectedPlayersPay.Sum(kv => kv.Value);
+        return CalculateItemTotalPrice(_item) - totalPay;
+    }
+    
+    private int CalculateItemTotalPrice(TraderItem item)
+    {
+        if (item.Item == null)
+        {
+            return item.CustomPrice * _buyCount;
+        }
+        var startPrice = item.UseDefaultPrice ? item.Item.DefaultPrice : item.CustomPrice;
+        if (item.AppliedDiscount == null)
+        {
+            return startPrice * _buyCount;
+        }
+
+        var discount = item.AppliedDiscount;
+        if (discount.IsPercent)
+        {
+            return (int)Math.Floor(startPrice - startPrice * discount.DiscountPercent / 100d) * _buyCount;
+        }
+
+        return (startPrice - discount.DiscountFix) * _buyCount;
+    }
+
+    private async Task BuyItem()
+    {
+        _item.Count -= _buyCount;
+        var prevDiscount = _item.AppliedDiscount;
+        _item.AppliedDiscount = null;
+        var prevItem = _item.Item;
+        _item.Item = null;
+        await TraderItemService.SaveAsync(_item);
+        _item.Item = prevItem;
+        _item.AppliedDiscount = prevDiscount;
+        
+        foreach (var player in _selectedPlayers)
+        {
+            var playerPays = _selectedPlayersPay[player.Id];
+            player.Balance -= playerPays;
+            var prevCategory = player.Category;
+            player.Category = null;
+            await PlayerService.SaveAsync(player);
+            player.Category = prevCategory;
+        }
+        ItemBoughtAction?.Invoke(_item, _buyCount);
+    }
+}

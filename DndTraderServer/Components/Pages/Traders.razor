@@ -1,0 +1,519 @@
+﻿@page "/admin/traders"
+@using Domain.Entities.Connections
+@inject BaseService<Trader> TraderService
+@inject BaseService<TraderItem> TraderItemsService
+@inject BaseService<Category> CategoryService
+@inject BaseService<Discount> DiscountService
+
+<ItemSelectPopup @ref="_itemSelectPopup" ItemSelectedAction="ItemSelectedAction"/>
+<NotificationWindow @ref="_notification"/>
+<div class="container p-3">
+    <div class="row row-cols-auto mb-3">
+        <div class="col d-flex align-items-end m-0">
+            <h1 class="page-title">
+                Торговцы
+            </h1>
+        </div>
+        <div class="col d-flex align-items-end m-0">
+            <button class="btn btn-sm btn-primary" @onclick="CreateNewButtonClicked">
+                Добавить нового
+            </button>
+        </div>
+    </div>
+    <div class="row row-cols-auto mb-1">
+        <h5>Фильтры</h5>
+    </div>
+    <div class="row row-cols-auto mb-3">
+        <div class="col">
+            <label for="search-input" class="form-label">Поиск</label>
+            <input type="text" class="form-control" id="search-input" placeholder="Поиск..." @onchange="SearchInputChange">
+        </div>
+        <div class="col">
+            <DropDown Items="_categories" AddEmptyVariant="true" Title="Категория" SelectionChangedAction="CategoryFilterChanged"
+                      CustomToStringFormat="r => r.Title" />
+        </div>
+    </div>
+    <div class="row row-cols-1 g-3">
+        @foreach (var trader in _traders)
+        {
+             <div class="card">
+                    <div class="row g-0">
+                        @if (trader.ImagePath != null)
+                        {
+                            <div class="col-md-2 d-flex align-items-center" style="padding-left: 16px; padding-bottom: 16px; padding-top: 16px">
+                                <img src="@WebUtils.GetFullImageUrl(NavigationManager, trader.ImagePath)" class="img-fluid rounded" alt="Изображение торговца">
+                            </div>
+                        }
+                        <div class="col">
+                            <div class="card-body">
+                                @if (_editingTrader == trader)
+                                {
+                                    <div class="mb-1">
+                                        <label for="title-input" class="form-label">Имя торговца</label>
+                                        <input type="text" class="form-control" id="title-input" placeholder="Зелье лечения" @bind="trader.Title">
+                                    </div>
+                                    <div class="mb-1">
+                                        <DropDown Items="_categoriesTitles" Title="Категория" AddEmptyVariant="true" IsAutoWidth="true"
+                                                  SelectionChangedAction="DdTraderCategoryChanged" InitialSelectedItem="trader.Category?.Title"/>
+                                    </div>
+                                    <div class="mb-1">
+                                        <label for="hid-desc-input" class="form-label">Заметки</label>
+                                        <textarea class="form-control" id="hid-desc-input" rows="3" @bind="trader.HiddenDescription"></textarea>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="formFile" class="form-label">Изменить изображение</label>
+                                        <InputFile class="form-control" id="formFile" 
+                                                   OnChange="(obj) => ImageUploaderChanged(trader, obj)"/>
+                                    </div>
+                                    <div class="row row-cols-auto d-flex align-items-center mb-2">
+                                        <div class="col">
+                                            <h6 class="card-subtitle m-0 p-0">Продаваемые предметы</h6>
+                                        </div>
+                                        <div class="col">
+                                            <button class="btn btn-sm btn-primary" @onclick="() => AddNewItemButtonClicked(trader)"
+                                                    data-bs-toggle="modal" data-bs-target="#item-select-popup">
+                                                Добавить
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="row row-cols-1 mb-3">
+                                        @foreach (var item in _traderItems[trader.Id])
+                                        {
+                                            <div class="col">
+                                                <div class="card">
+                                                    <div class="row g-0">
+                                                        @if (item.Item?.ImagePath != null)
+                                                        {
+                                                            <div class="col-md-1 d-flex align-items-center" style="padding-left: 16px; padding-bottom: 16px; padding-top: 16px">
+                                                                <img src="@WebUtils.GetFullImageUrl(NavigationManager, item.Item.ImagePath)" 
+                                                                     class="img-fluid rounded" alt="Изображение предмета">
+                                                            </div>
+                                                        }
+                                                        <div class="col">
+                                                            <div class="card-body">
+                                                                <h5 class="card-title">@item.Item?.Title</h5>
+                                                                <div class="row mb-1 d-flex align-items-center">
+                                                                    <div class="col col-auto">
+                                                                        <b for="count-input" class="form-label">Кол-во: </b>
+                                                                    </div>
+                                                                    <div class="col col-4" style="padding-left: 0">
+                                                                        <input type="number" class="form-control" id="count-input" placeholder="1" @bind="item.Count">
+                                                                    </div>
+                                                                </div>
+                                                                <div class="form-check">
+                                                                    <label class="form-check-label" for="useDefaultPrice@(item.Id)" >
+                                                                        Использовать стандартную цену
+                                                                    </label>
+                                                                    <input class="form-check-input" type="checkbox" value="" 
+                                                                           id="useDefaultPrice@(item.Id)" @bind="item.UseDefaultPrice">
+                                                                </div>
+                                                                <div class="row mb-1 d-flex align-items-center">
+                                                                    <div class="col col-auto">
+                                                                        <b for="count-input" class="form-label">Цена: </b>
+                                                                    </div>
+                                                                    <div class="col col-4" style="padding-left: 0">
+                                                                        @if (item.UseDefaultPrice)
+                                                                        {
+                                                                            <input type="text" class="form-control" id="title-input" placeholder="@item.Item?.DefaultPrice" 
+                                                                                   disabled>
+                                                                        }
+                                                                        else
+                                                                        {
+                                                                            <input type="number" class="form-control" id="title-input" placeholder="1500" @bind="item.CustomPrice">
+                                                                        }
+                                                                    </div>
+                                                                </div>
+                                                                <div class="row mb-3 d-flex align-items-center">
+                                                                    <div class="col col-auto">
+                                                                        <b for="count-input" class="form-label">Скидка: </b>
+                                                                    </div>
+                                                                    <div class="col col-4" style="padding-left: 0">
+                                                                        <DropDown Items="_allDiscounts"
+                                                                                  InitialSelectedItem="_allDiscounts.FirstOrDefault(d => d.Id == item.DiscountId)" 
+                                                                                  AddEmptyVariant="true" CustomToStringFormat="DiscountToStr"
+                                                                                  SelectionChangedAction="d => DdDiscountOnItemChanged(item, d)"/>
+                                                                    </div>
+                                                                </div>
+                                                                @if (item.AppliedDiscount != null)
+                                                                {
+                                                                    <p class="card-text mb-3"><b>Итого: </b>
+                                                                        @CalculateItemTotalPrice(item) монет(а) / шт.</p>
+                                                                }
+                                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteItemButtonClicked(item)">
+                                                                    Удалить
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                    
+                                    <div class="row row-cols-auto d-flex justify-content-between g-2">
+                                        <div class="col">
+                                            <button class="btn btn-success" style="width: fit-content" @onclick="() => SaveTraderButtonClicked(trader)">
+                                                Сохранить
+                                            </button>
+                                        </div>
+                                        <div class="col">
+                                            <button class="btn btn-outline-secondary" style="width: fit-content" @onclick="CancelEditButtonClicked">
+                                                Отмена
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <h5 class="card-title">@trader.Title</h5>
+                                    if (trader.Category != null)
+                                    {
+                                        <p class="card-text"><b>Категория: </b>@trader.Category.Title</p>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(trader.HiddenDescription))
+                                    {
+                                        <p class="card-text mb-0"><b>Заметки:</b></p>
+                                        <p class="card-text">
+                                            @((MarkupString)trader.HiddenDescription.Replace("\n", "<br>"))
+                                        </p>
+                                    }
+                                    <h6 class="card-subtitle mb-2">Продаваемые предметы</h6>
+                                    <div class="row row-cols-1 mb-3">
+                                        @foreach (var item in _traderItems[trader.Id])
+                                        {
+                                            <div class="col">
+                                                <div class="card">
+                                                    <div class="row g-0">
+                                                        @if (item.Item.ImagePath != null)
+                                                        {
+                                                            <div class="col-md-1 d-flex align-items-center justify-content-center" style="padding-left: 8px; padding-bottom: 8px; padding-top: 8px">
+                                                                <img src="@WebUtils.GetFullImageUrl(NavigationManager, item.Item.ImagePath)" 
+                                                                     class="img-fluid rounded" alt="Изображение предмета">
+                                                            </div>
+                                                        }
+                                                        <div class="col">
+                                                            <div class="card-body" style="padding: 8px">
+                                                                <h5 class="card-title">@item.Item.Title - @CalculateItemTotalPrice(item) монет(а), @item.Count шт.</h5>
+                                                                <p class="card-text mb-0"><b>Изначальная цена: </b>@(GetItemPrice(item)) монет(а)</p>
+                                                                @if (item.AppliedDiscount != null)
+                                                                {
+                                                                    @if (item.AppliedDiscount.IsPercent)
+                                                                    {
+                                                                        <p class="card-text mb-0"><b>Скидка: </b>@(item.AppliedDiscount.DiscountPercent)%</p>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <p class="card-text mb-0"><b>Скидка: </b>@(item.AppliedDiscount.DiscountFix) монет</p>
+                                                                    }
+                                                                }
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                    
+                                    <div class="row row-cols-auto d-flex justify-content-between g-2">
+                                        <div class="col">
+                                            <button class="btn btn-primary" style="width: fit-content" @onclick="() => EditButtonClicked(trader)">
+                                                Редактировать
+                                            </button>
+                                        </div>
+                                        <div class="col">
+                                            <button class="btn btn-outline-danger" style="width: fit-content" @onclick="() => DeleteTraderButtonClicked(trader)">
+                                                Удалить
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<Category> _categories = [];
+    private List<string> _categoriesTitles = [];
+    private List<Trader> _traders = [];
+    private List<Discount> _allDiscounts = [];
+    private Dictionary<Guid, List<TraderItem>> _traderItems = [];
+    
+    private string _searchInput = "";
+    private Category? _filterCategory;
+    private Trader? _editingTrader;
+    private string? _editingSelectedCategory;
+    private Trader? _oldTraderInfo;
+    private NotificationWindow _notification;
+    private ItemSelectPopup _itemSelectPopup = null!;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCategories();
+        await LoadTraders();
+        await LoadDiscounts();
+    }
+    
+    private async Task ItemSelectedAction(Item arg)
+    {
+        var traderItem = new TraderItem
+        {
+            Id = Guid.NewGuid(),
+            Count = 1,
+            TraderId = _editingTrader!.Id,
+            Trader = null,
+            ItemId = arg.Id,
+            Item = arg,
+            DiscountId = null,
+            AppliedDiscount = null,
+            UseDefaultPrice = true,
+            CustomPrice = 100
+        };
+        _traderItems[_editingTrader.Id].Add(traderItem);
+        StateHasChanged();
+        _notification.Show("Успешно", $"Торговцу \"{_editingTrader.Title}\" добавлен предмет \"{arg.Title}\".");
+    }
+    
+    private async Task AddNewItemButtonClicked(Trader trader)
+    {
+        _itemSelectPopup.Show();
+    }
+
+    private async Task DeleteItemButtonClicked(TraderItem item)
+    {
+        await TraderItemsService.TryRemoveAsync(item.Id);
+        if (_traderItems.ContainsKey(item.TraderId) && _traderItems[item.TraderId].Contains(item))
+        {
+            _traderItems[item.TraderId].Remove(item);
+        }
+
+        var trader = _traders.First(t => t.Id == item.TraderId);
+        _notification.Show("Успешно", $"Предмет \"{item.Item.Title}\" был удален у торговца \"{trader.Title}\".");
+    }
+    
+    private async Task CreateNewButtonClicked()
+    {
+        var trader = new Trader
+        {
+            Id = Guid.NewGuid(),
+            Title = "Новый торговец",
+            ImagePath = null,
+            HiddenDescription = "",
+            CategoryId = null,
+            Category = null
+        };
+        await TraderService.SaveAsync(trader);
+        _traders.Add(trader);
+        _traderItems[trader.Id] = [];
+        _notification.Show("Успешно", "Новый торговец создан.");
+    }
+
+    private async Task SearchInputChange(ChangeEventArgs arg)
+    {
+        var str = (string)arg.Value!;
+        _searchInput = str;
+        await LoadTraders();
+    }
+
+    private void CategoryFilterChanged(Category? obj)
+    {
+        _filterCategory = obj;
+        LoadTraders();
+    }
+
+    private async Task EditButtonClicked(Trader trader)
+    {
+        if (_editingTrader != null)
+        {
+            CancelEditButtonClicked();
+        }
+        _editingTrader = trader;
+        _oldTraderInfo = new Trader
+        {
+            Id = trader.Id,
+            Title = trader.Title,
+            ImagePath = trader.ImagePath,
+            HiddenDescription = trader.HiddenDescription,
+            CategoryId = trader.CategoryId,
+            Category = trader.Category
+        };
+    }
+
+    private async Task DeleteTraderButtonClicked(Trader trader)
+    {
+        var itemsToDelete = _traderItems[trader.Id];
+        await TraderItemsService.RemoveRangeAsync(itemsToDelete.ToArray());
+        await TraderService.TryRemoveAsync(trader.Id);
+        _traders.Remove(trader);
+        _traderItems.Remove(trader.Id);
+        _notification.Show("Успешно", $"Торговец \"{trader.Title}\" был удален.");
+    }
+
+    private async Task SaveTraderButtonClicked(Trader trader)
+    {
+        if (_editingSelectedCategory != null && _editingSelectedCategory != _editingTrader!.Category?.Title)
+        {
+            var category = _categories.First(c => c.Title == _editingSelectedCategory);
+            trader.CategoryId = category.Id;
+        }
+
+        if (_editingSelectedCategory == null)
+        {
+            trader.CategoryId = null;
+        }
+        trader.Category = null;
+        await TraderService.SaveAsync(trader);
+        foreach (var item in _traderItems[trader.Id])
+        {
+            var prevItem = item.Item;
+            item.DiscountId = item.AppliedDiscount?.Id;
+            item.AppliedDiscount = null;
+            item.ItemId = item.Item.Id;
+            item.Item = null;
+            item.TraderId = trader.Id;
+            await TraderItemsService.SaveAsync(item);
+            item.Item = prevItem;
+        }
+        _notification.Show("Успешно", $"Торговец \"{trader.Title}\" сохранен.");
+        _editingTrader = null;
+        await LoadTraders();
+    }
+
+    private async Task ImageUploaderChanged(Trader trader, InputFileChangeEventArgs obj)
+    {
+        if (obj.File.ContentType.Split('/')[0] != "image")
+        {
+            _notification.Show("Ошибка", "Загруженный файл не является изображением.");
+            return;
+        }
+        var wwwrootPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+        if (!string.IsNullOrWhiteSpace(trader.ImagePath))
+        {
+            var currentPath = Path.Combine(wwwrootPath, trader.ImagePath);
+            if (File.Exists(currentPath))
+            {
+                File.Delete(currentPath);
+            }
+        }
+        var file = obj.File;
+        var extension = obj.File.ContentType.Split('/')[1];
+        var newImagePath = Path.Combine("images", "traders", $"{trader.Id}.{extension}");
+        var fullPath = Path.Combine(wwwrootPath, newImagePath);
+
+        await using (FileStream fs = new(fullPath, FileMode.Create))
+        {
+            await file.OpenReadStream(maxAllowedSize: 512000000).CopyToAsync(fs);
+        }
+
+        trader.ImagePath = newImagePath;
+        await TraderService.SaveAsync(trader);
+        _notification.Show("Успешно", $"Изображение у торговца \"{trader.Title}\" успешно обновлено.");
+        StateHasChanged();
+    }
+
+    private void CancelEditButtonClicked()
+    {
+        if (_editingTrader == null || _oldTraderInfo == null)
+        {
+            return;
+        }
+        _editingTrader.Category = _oldTraderInfo.Category;
+        _editingTrader.CategoryId = _oldTraderInfo.CategoryId;
+        _editingTrader.HiddenDescription = _oldTraderInfo.HiddenDescription;
+        _editingTrader.ImagePath = _oldTraderInfo.ImagePath;
+        _editingTrader.Title = _oldTraderInfo.Title;
+        _editingTrader = null;
+    }
+
+    private void DdTraderCategoryChanged(string? categoryTitle)
+    {
+        _editingSelectedCategory = categoryTitle;
+        
+    }
+    private int GetItemPrice(TraderItem item)
+    {
+        return item.UseDefaultPrice ? item.Item.DefaultPrice : item.CustomPrice;
+    }
+    
+    private int CalculateItemTotalPrice(TraderItem item)
+    {
+        var startPrice = GetItemPrice(item);
+        if (item.AppliedDiscount == null)
+        {
+            return startPrice;
+        }
+
+        var discount = item.AppliedDiscount;
+        if (discount.IsPercent)
+        {
+            return (int)Math.Floor(startPrice - startPrice * discount.DiscountPercent / 100d);
+        }
+
+        return startPrice - discount.DiscountFix;
+    }
+
+    private string DiscountToStr(Discount arg)
+    {
+        return arg.IsPercent ? $"{arg.Title} ({arg.DiscountPercent}%)" : $"{arg.Title} ({arg.DiscountFix})";
+    }
+
+    private void DdDiscountOnItemChanged(TraderItem item, Discount? obj)
+    {
+        item.AppliedDiscount = obj;
+        item.DiscountId = obj?.Id;
+        StateHasChanged();
+    }
+    
+    private async Task LoadDiscounts()
+    {
+        var res = await DiscountService.GetAsync(new DataQueryParams<Discount>());
+        _allDiscounts = res.ToList();
+    }
+    
+    private async Task LoadCategories()
+    {
+        var res = await CategoryService.GetAsync(new DataQueryParams<Category>());
+        _categories = res.ToList();
+        _categoriesTitles = res.Select(c => c.Title).ToList();
+    }
+
+    private async Task LoadTraders()
+    {
+        var dataQuery = new DataQueryParams<Trader>
+        {
+            Filters = [],
+            IncludeParams = new IncludeParams<Trader>
+            {
+                IncludeProperties = [t => t.Category]
+            }
+        };
+        if (!string.IsNullOrWhiteSpace(_searchInput))
+        {
+            dataQuery.Filters.Add(t => t.Title.Contains(_searchInput));
+        }
+        if (_filterCategory != null)
+        {
+            dataQuery.Filters.Add(t => t.CategoryId == _filterCategory.Id);
+        }
+        
+        var res = await TraderService.GetAsync(dataQuery);
+        _traders = res.ToList();
+        var ids = _traders.Select(t => t.Id).ToArray();
+        var resItems = await TraderItemsService.GetAsync(new DataQueryParams<TraderItem>()
+        {
+            Expression = i => ids.Contains(i.TraderId),
+            IncludeParams = new IncludeParams<TraderItem>
+            {
+                IncludeProperties = [i => i.Item, i => i.AppliedDiscount]
+            }
+        });
+        foreach (var trader in _traders)
+        {
+            _traderItems[trader.Id] = resItems.Where(i => i.TraderId == trader.Id).ToList();
+        }
+        StateHasChanged();
+    }
+}

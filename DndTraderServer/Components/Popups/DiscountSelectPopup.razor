@@ -1,0 +1,116 @@
+﻿@inject BaseService<Discount> DiscountService
+@if (true)
+{
+    <div class="modal fade" id="discount-select-popup" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog" style="max-width: 1000px">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h1 class="modal-title fs-5" id="staticBackdropLabel">Выберите скидку</h1>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="container">
+                        <div class="row row-cols-auto mb-1">
+                            <h5>Фильтры</h5>
+                        </div>
+                        <div class="row row-cols-auto mb-3">
+                            <div class="col">
+                                <label for="search-input" class="form-label">Поиск</label>
+                                <input type="text" class="form-control" id="search-input" placeholder="Поиск..." @onchange="SearchInputChange">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row row-cols-1 g-3 p-2">
+                    @foreach (var discount in _allDiscounts)
+                    {
+                        <div class="col">
+                            <div class="card">
+                                
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col">
+                                            <h5 class="card-title">@discount.Title</h5>
+                                            <p class="card-text"><b>Скидка: </b>@GetDiscountStr(discount)</p>
+                                        </div>
+                                        <div class="col col-auto">
+                                            <button class="btn btn-sm btn-primary" style="width: fit-content" @onclick="() => SelectButtonClicked(discount)"
+                                                    data-bs-dismiss="modal">
+                                                Выбрать
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="Close" data-bs-dismiss="modal">Закрыть</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+
+@code {
+    [Parameter]
+    public Func<Discount, Task>? ItemSelectedAction { get; set; }
+    
+    public bool IsVisible { get; private set; }
+    
+    private string _searchInput = "";
+    private List<Discount> _allDiscounts = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDiscounts();
+    }
+
+    public void Show()
+    {
+        IsVisible = true;
+        _searchInput = "";
+        StateHasChanged();
+    }
+    
+    private async Task LoadDiscounts()
+    {
+        var dataQuery = new DataQueryParams<Discount> { Filters = []};
+        if (string.IsNullOrWhiteSpace(_searchInput))
+        {
+            dataQuery.Expression = item => item.Title.Contains(_searchInput);
+        }
+        var res = await DiscountService.GetAsync(dataQuery);
+        _allDiscounts = res.ToList();
+        StateHasChanged();
+    }
+    
+    private async Task SearchInputChange(ChangeEventArgs obj)
+    {
+        _searchInput = obj.Value == null ? "" : (string)obj.Value;
+        await LoadDiscounts();
+    }
+
+    public void Close()
+    {
+        IsVisible = false;
+        StateHasChanged();
+    }
+
+    private async Task SelectButtonClicked(Discount item)
+    {
+        if (ItemSelectedAction != null)
+        {
+            await ItemSelectedAction(item);
+        }
+        Close();
+    }
+
+    private string GetDiscountStr(Discount discount)
+    {
+        return discount.IsPercent ? $"{discount.DiscountPercent}%" : $"{discount.DiscountFix} монет(а)";
+    }
+}

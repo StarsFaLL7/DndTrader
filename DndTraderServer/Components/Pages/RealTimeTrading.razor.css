@@ -1,0 +1,55 @@
+﻿.back-change {
+    flex-grow: 1;
+    width: calc(100% + 40px);
+    background-color: var(--bs-gray-900);
+    margin: -20px;
+    display: flex;
+    flex-direction: column;
+}
+
+.trading-section {
+    border-radius: 10px;
+    border: var(--bs-gray-800) solid 2px;
+    padding: 10px;
+    display: flex;
+    flex-grow: 1;
+    margin: 20px;
+}
+
+.dark-style {
+    color: var(--bs-gray-100);
+}
+
+.trading-col {
+    margin-top: -10px;
+    margin-bottom: -10px;
+    display: flex;
+    flex-direction: column;
+}
+
+.trading-col-header {
+    min-height: 50px;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    padding: 10px;
+}
+
+.trading-col-content {
+    flex-grow: 1;
+    width: 100%;
+}
+
+.player-col {
+    border-right: var(--bs-gray-800) solid 2px;
+}
+
+.items-col {
+    border-right: var(--bs-gray-800) solid 2px;
+}
+
+.out-of-stock {
+    opacity: 0.3;
+}
