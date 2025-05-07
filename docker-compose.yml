@@ -1,6 +1,38 @@
 ﻿services:
-  dndtraderserver:
+
+  webApi:
     image: dndtraderserver
     build:
       context: .
       dockerfile: DndTraderServer/Dockerfile
+    ports:
+      - "8080:80"
+    environment:
+      - ASPNETCORE_URLS=http://+:80
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Server=dnd-postgres;Database=dndTrader;User Id=postgres;Password=postgres;
+    depends_on:
+      - "dnd-postgres"
+    networks:
+      - aspnetcoreapp-network
+  
+  dnd-postgres:
+    image: postgres:16
+    restart: always
+    ports:
+      - "5435:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: dndTrader
+    networks:
+      - aspnetcoreapp-network
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+
+networks:
+  aspnetcoreapp-network:
+    driver: bridge
+
+volumes:
+  dbdata:
