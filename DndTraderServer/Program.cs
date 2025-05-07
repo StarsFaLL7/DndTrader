@@ -12,7 +12,10 @@ Log.Logger = new LoggerConfiguration()
     .CreateLogger();
 
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents(c => c.DetailedErrors = true);
+
+
+
 builder.Services.TryAddApplication();
 builder.Services.TryAddInfrastructure();
 builder.Services.AddScoped<ItemsParser>();
